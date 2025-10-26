@@ -1,7 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useAuth0 } from '@auth0/auth0-react';
+import { isUCFUser, getDisplayName, isEmailVerified, isVerifiedUCFUser } from './auth0-config.js';
 import "./Marketplace.css";
 
 export default function Marketplace({ onBack }) {
+  const { loginWithRedirect, user, isAuthenticated, isLoading } = useAuth0();
+  
   // form state (Create Listing panel)
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("");
@@ -13,28 +17,110 @@ export default function Marketplace({ onBack }) {
   const [searchText, setSearchText] = useState("");
   const [searchCategory, setSearchCategory] = useState("All");
 
+  // listings state
+  const [listings, setListings] = useState([]);
+  const [loadingListings, setLoadingListings] = useState(true);
+  const [submittingListing, setSubmittingListing] = useState(false);
+
+  // Fetch listings from database
+  const fetchListings = async () => {
+    try {
+      setLoadingListings(true);
+      const response = await fetch('http://localhost:3001/api/listings');
+      if (response.ok) {
+        const data = await response.json();
+        setListings(data);
+      } else {
+        console.error('Failed to fetch listings');
+      }
+    } catch (error) {
+      console.error('Error fetching listings:', error);
+    } finally {
+      setLoadingListings(false);
+    }
+  };
+
+  // Load listings on component mount
+  useEffect(() => {
+    fetchListings();
+  }, []);
+
   // submit for marketplace post
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const listingData = {
-      title,
-      price,
-      category,
-      description,
-      photoName: photoFile ? photoFile.name : null,
-      createdAt: new Date().toISOString(),
-    };
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      alert("Please log in to create a listing.");
+      return;
+    }
 
-    console.log("New listing:", listingData);
-    alert("Listing posted (demo)");
+    // Check if user is a UCF Knight
+    if (!isUCFUser(user)) {
+      alert("Only UCF Knights can create marketplace listings. You can view listings as a community member.");
+      return;
+    }
 
-    // clear form
-    setTitle("");
-    setPrice("");
-    setCategory("General");
-    setDescription("");
-    setPhotoFile(null);
+    if (!isEmailVerified(user)) {
+      alert("Please verify your UCF email address to create listings.");
+      return;
+    }
+
+    setSubmittingListing(true);
+
+    try {
+      // Create listing in database
+      const response = await fetch('http://localhost:3001/api/listings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title,
+          description,
+          price: parseFloat(price) || 0,
+          category,
+          authorEmail: user.email,
+          authorName: getDisplayName(user)
+        })
+      });
+
+      if (response.ok) {
+        const newListing = await response.json();
+        console.log("New listing created:", newListing);
+        
+        // Refresh listings to show the new one
+        await fetchListings();
+        
+        alert(`Listing posted by ${getDisplayName(user)}! 🎓 (Verified Knight)`);
+
+        // clear form
+        setTitle("");
+        setPrice("");
+        setCategory("General");
+        setDescription("");
+        setPhotoFile(null);
+      } else {
+        const errorData = await response.json();
+        console.error('Server error:', errorData);
+        throw new Error(errorData.error || 'Failed to create listing');
+      }
+    } catch (error) {
+      console.error('Error creating listing:', error);
+      alert(`Failed to create listing: ${error.message}. Please try again.`);
+    } finally {
+      setSubmittingListing(false);
+    }
+  };
+
+  // Handle login for unauthenticated users
+  const handleLogin = () => {
+    loginWithRedirect({
+      authorizationParams: {
+        prompt: 'login',
+        screen_hint: 'login'
+      }
+    });
   };
 
   // submit for search (left panel)
@@ -67,9 +153,9 @@ export default function Marketplace({ onBack }) {
             </h1>
 
             <p className="marketplace-subtitle">
-              Student-to-student listings. Local only. Meet in public /
+              UCF Knight-to-Knight marketplace. Local only. Meet in public /
               <br />
-              on campus.
+              on campus. Community members can view listings.
             </p>
           </div>
 
@@ -144,98 +230,53 @@ export default function Marketplace({ onBack }) {
           </form>
         </aside>
 
-        {/* ========== MIDDLE COLUMN: LISTINGS FEED (UNCHANGED) ========== */}
+        {/* ========== MIDDLE COLUMN: LISTINGS FEED ========== */}
         <main className="listings-feed">
           <h2 className="feed-heading">LISTINGS</h2>
 
-          {/* Listing #1 */}
-          <div className="feed-card">
-            <div className="feed-card-top">
-              <div className="feed-title-row">
-                <span className="feed-title">TI-84 Plus Calculator</span>
-                <span className="feed-price">$40</span>
-              </div>
-              <div className="feed-meta">
-                <span className="feed-badge">Verified Knight</span>
-                <span className="feed-dot">•</span>
-                <span className="feed-cat">Electronics</span>
-                <span className="feed-dot">•</span>
-                <span className="feed-time">2h ago</span>
-              </div>
-              <div className="feed-desc">
-                Works perfectly, lightly used for Calc 1 and Calc 2. Pickup
-                near UCF Library.
-              </div>
+          {loadingListings ? (
+            <div className="loading-listings">
+              <p>Loading listings...</p>
             </div>
-          </div>
-
-          {/* Listing #2 */}
-          <div className="feed-card">
-            <div className="feed-card-top">
-              <div className="feed-title-row">
-                <span className="feed-title">PC Repair / Custom Builds</span>
-                <span className="feed-price">$25/hr</span>
-              </div>
-              <div className="feed-meta">
-                <span className="feed-badge alt">Service</span>
-                <span className="feed-dot">•</span>
-                <span className="feed-cat">Tech Help</span>
-                <span className="feed-dot">•</span>
-                <span className="feed-time">Today</span>
-              </div>
-              <div className="feed-desc">
-                I'll diagnose, clean, and upgrade gaming PCs. Meet at Student Union.
-              </div>
+          ) : listings.length === 0 ? (
+            <div className="no-listings">
+              <p>No listings yet. Be the first to post something!</p>
             </div>
-          </div>
-
-          {/* Listing #3 */}
-          <div className="feed-card">
-            <div className="feed-card-top">
-              <div className="feed-title-row">
-                <span className="feed-title">
-                  Physics I + Chem I Textbooks
-                </span>
-                <span className="feed-price">$30 bundle</span>
+          ) : (
+            listings.map((listing) => (
+              <div key={listing.id} className="feed-card">
+                <div className="feed-card-top">
+                  <div className="feed-title-row">
+                    <span className="feed-title">{listing.title}</span>
+                    <span className="feed-price">
+                      {listing.price > 0 ? `$${listing.price}` : 'Free'}
+                    </span>
+                  </div>
+                  <div className="feed-meta">
+                    <span className={`feed-badge ${listing.author?.isUcfVerified ? '' : 'alt'}`}>
+                      {listing.author?.isUcfVerified ? 'Verified Knight' : 'Community Member'}
+                    </span>
+                    <span className="feed-dot">•</span>
+                    <span className="feed-cat">{listing.category}</span>
+                    <span className="feed-dot">•</span>
+                    <span className="feed-time">
+                      {new Date(listing.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="feed-desc">
+                    {listing.description}
+                  </div>
+                  <div className="feed-author">
+                    <small>Posted by: {listing.author?.displayName || 'Unknown'}</small>
+                  </div>
+                </div>
               </div>
-              <div className="feed-meta">
-                <span className="feed-badge">Verified Knight</span>
-                <span className="feed-dot">•</span>
-                <span className="feed-cat">Textbooks / Study</span>
-                <span className="feed-dot">•</span>
-                <span className="feed-time">1d ago</span>
-              </div>
-              <div className="feed-desc">
-                Highlighted but clean. Super helpful for first-year STEM.
-                Can meet in Engineering 2 atrium.
-              </div>
-            </div>
-          </div>
-
-          {/* Listing #4 */}
-          <div className="feed-card">
-            <div className="feed-card-top">
-              <div className="feed-title-row">
-                <span className="feed-title">Ride to Campus Sat 9am</span>
-                <span className="feed-price">Gas split</span>
-              </div>
-              <div className="feed-meta">
-                <span className="feed-badge alt">Ask</span>
-                <span className="feed-dot">•</span>
-                <span className="feed-cat">Carpool</span>
-                <span className="feed-dot">•</span>
-                <span className="feed-time">Just now</span>
-              </div>
-              <div className="feed-desc">
-                Need a ride from Avalon Park to main campus before 9am Saturday.
-                I'll cover gas.
-              </div>
-            </div>
-          </div>
+            ))
+          )}
         </main>
 
         {/* ========== RIGHT COLUMN: CREATE A LISTING (MOVED HERE) ========== */}
-        <form className="listing-card" onSubmit={handleSubmit}>
+        <div className="listing-card">
           <div className="listing-card-header">
             <span className="listing-icon">📢</span>
             <span className="listing-heading-label">
@@ -243,10 +284,51 @@ export default function Marketplace({ onBack }) {
             </span>
           </div>
 
-          <h2 className="listing-title">Got something to sell or offer?</h2>
-          <p className="listing-desc">
-            Fill this out to post it to the marketplace feed.
-          </p>
+          {isLoading ? (
+            <div className="auth-loading">
+              <p>Loading...</p>
+            </div>
+          ) : !isAuthenticated ? (
+            <div className="auth-prompt">
+              <h2 className="listing-title">Login Required</h2>
+              <p className="listing-desc">
+                You need to be logged in to create marketplace listings.
+              </p>
+              <button onClick={handleLogin} className="login-prompt-btn">
+                Login to Create Listing
+              </button>
+            </div>
+          ) : !isUCFUser(user) ? (
+            <div className="auth-prompt">
+              <h2 className="listing-title">UCF Knights Only</h2>
+              <p className="listing-desc">
+                Only UCF Knights can create marketplace listings. You can view and browse all listings as a community member.
+              </p>
+              <div className="verification-status community-member">
+                <p>Current status: 🌎 Community Member</p>
+                <p>You can view listings but cannot create new ones.</p>
+              </div>
+            </div>
+          ) : !isEmailVerified(user) ? (
+            <div className="auth-prompt">
+              <h2 className="listing-title">Email Verification Required</h2>
+              <p className="listing-desc">
+                Please verify your UCF email address to create marketplace listings.
+              </p>
+              <div className="verification-status">
+                <p>Current status: ⚠️ UCF email not verified</p>
+                <p>Check your @ucf.edu email for a verification link.</p>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <h2 className="listing-title">Got something to sell or offer?</h2>
+              <p className="listing-desc">
+                Fill this out to post it to the marketplace feed.
+              </p>
+              <div className="user-info">
+                <p>Posting as: <strong>{getDisplayName(user)}</strong> 🎓 (Verified Knight)</p>
+              </div>
 
           {/* Title */}
           <label className="field-label">
@@ -327,11 +409,17 @@ export default function Marketplace({ onBack }) {
             />
           </label>
 
-          {/* Submit */}
-          <button type="submit" className="submit-listing-btn">
-            Post Listing
-          </button>
-        </form>
+              {/* Submit */}
+              <button 
+                type="submit" 
+                className="submit-listing-btn"
+                disabled={submittingListing}
+              >
+                {submittingListing ? 'Posting...' : 'Post Listing'}
+              </button>
+            </form>
+          )}
+        </div>
       </section>
     </div>
   );

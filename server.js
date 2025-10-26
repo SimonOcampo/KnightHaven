@@ -150,14 +150,40 @@ app.get('/api/listings', async (req, res) => {
 
 app.post('/api/listings', async (req, res) => {
   try {
-    const { title, description, price, category, authorId } = req.body;
+    const { title, description, price, category, authorId, authorEmail, authorName } = req.body;
+    
+    // Find or create a user for this listing
+    let userId;
+    if (authorId) {
+      // Use provided authorId if it exists
+      userId = parseInt(authorId);
+    } else {
+      // Create a default user or find existing one
+      let user = await prisma.user.findFirst({
+        where: { email: authorEmail || 'default@ucf.edu' }
+      });
+      
+      if (!user) {
+        // Create a default user
+        user = await prisma.user.create({
+          data: {
+            email: authorEmail || 'default@ucf.edu',
+            passwordHash: 'default', // This is just for demo purposes
+            displayName: authorName || 'KnightHaven User',
+            isUcfVerified: authorEmail?.includes('@ucf.edu') || false
+          }
+        });
+      }
+      userId = user.id;
+    }
+    
     const listing = await prisma.listing.create({
       data: {
         title,
         description,
         price: parseFloat(price),
         category,
-        authorId: parseInt(authorId)
+        authorId: userId
       },
       include: {
         author: {
@@ -171,7 +197,13 @@ app.post('/api/listings', async (req, res) => {
     });
     res.json(listing);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create listing' });
+    console.error('Error creating listing:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to create listing', 
+      details: error.message,
+      stack: error.stack 
+    });
   }
 });
 
