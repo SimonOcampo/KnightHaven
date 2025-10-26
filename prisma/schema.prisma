@@ -23,6 +23,7 @@ model User {
   posts         Post[]
   listings       Listing[]
   services       Service[]
+  reviews        Review[]
 }
 
 // Posts for social feed
@@ -67,16 +68,37 @@ model Service {
 
 //Yelp Places
 model Place {
-  id           String   @id @default(cuid())
-  yelpId       String   @unique
-  name         String
-  description  String?
-  rating       Float?
-  reviewCount  Int?
-  address      String?
-  city         String?
-  latitude     Float?
-  longitude    Float?
-  createdAt    DateTime @default(now())
+  id               String   @id @default(cuid())
+  yelpId           String   @unique
+  name             String
+  description      String?
+  originalCategory String?  // The category this was fetched under (e.g., "restaurants")
+  rating           Float?
+  reviewCount      Int?
+  address          String?
+  city             String?
+  latitude         Float?
+  longitude        Float?
+  createdAt        DateTime @default(now())
+  
+  // Relations
+  reviews          Review[]
+}
+
+// Student Reviews for Places
+model Review {
+  id              String   @id @default(cuid())
+  placeId         String?
+  place           Place?   @relation(fields: [placeId], references: [id], onDelete: SetNull)
+  userId          Int?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  reviewerName    String   // Display name for the reviewer
+  reviewerEmail   String   // Email of the reviewer
+  isUCFVerified   Boolean  @default(false) // Whether reviewer is UCF verified
+  rating          Int      // 1-5 star rating
+  content         String   // Review text content
+  isApproved      Boolean  @default(false) // Whether review is approved by moderators
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 

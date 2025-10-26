@@ -461,6 +461,7 @@ app.get('/api/refresh-data', async (req, res) => {
             yelpId: b.id,
             name: b.name,
             description: b.categories?.[0]?.title || "Business",
+            originalCategory: category, // Store the category this was fetched under
             rating: b.rating,
             reviewCount: b.review_count,
             address: b.location?.address1 || "",
@@ -487,6 +488,183 @@ app.get('/api/refresh-data', async (req, res) => {
   } catch (error) {
     console.error("❌ Error in refresh-data endpoint:", error);
     res.status(500).json({ error: "Failed to refresh data" });
+  }
+});
+
+// Reviews endpoints
+// Get reviews for a specific place
+app.get('/api/reviews/:placeId', async (req, res) => {
+  try {
+    const { placeId } = req.params;
+    const reviews = await prisma.review.findMany({
+      where: { 
+        placeId: placeId,
+        isApproved: true // Only show approved reviews
+      },
+      include: {
+        place: {
+          select: {
+            name: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(reviews);
+  } catch (error) {
+    console.error('Error fetching reviews:', error);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
+// Submit a new review
+app.post('/api/reviews', async (req, res) => {
+  try {
+    const { placeId, reviewerName, reviewerEmail, isUCFVerified, rating, content } = req.body;
+    
+    console.log('📝 Received review submission:', { placeId, reviewerName, reviewerEmail, isUCFVerified, rating, content });
+    
+    // Validate required fields
+    if (!placeId || !reviewerName || !reviewerEmail || !rating || !content) {
+      console.log('❌ Missing required fields');
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    // Validate rating
+    if (rating < 1 || rating > 5) {
+      console.log('❌ Invalid rating:', rating);
+      return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+    }
+    
+    // Check if place exists
+    const place = await prisma.place.findUnique({
+      where: { id: placeId }
+    });
+    
+    if (!place) {
+      console.log('❌ Place not found:', placeId);
+      return res.status(404).json({ error: 'Place not found' });
+    }
+    
+    console.log('✅ Place found:', place.name);
+    
+    // Create the review
+    const review = await prisma.review.create({
+      data: {
+        placeId: placeId,
+        reviewerName,
+        reviewerEmail,
+        isUCFVerified: isUCFVerified || false,
+        rating: parseInt(rating),
+        content,
+        isApproved: true // Auto-approve reviews
+      },
+      include: {
+        place: {
+          select: {
+            name: true
+          }
+        }
+      }
+    });
+    
+    console.log(`✅ New review created successfully:`, review);
+    res.status(201).json({ 
+      message: 'Review submitted successfully.',
+      review 
+    });
+  } catch (error) {
+    console.error('❌ Error creating review:', error);
+    res.status(500).json({ error: 'Failed to create review' });
+  }
+});
+
+// Get all reviews (for admin/moderator use)
+app.get('/api/reviews', async (req, res) => {
+  try {
+    console.log('🔍 Fetching all reviews from database...');
+    const reviews = await prisma.review.findMany({
+      include: {
+        place: {
+          select: {
+            name: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    console.log(`📝 Found ${reviews.length} reviews in database:`, reviews);
+    res.json(reviews);
+  } catch (error) {
+    console.error('❌ Error fetching all reviews:', error);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
+// Approve/reject a review (for admin/moderator use)
+app.put('/api/reviews/:reviewId', async (req, res) => {
+  try {
+    const { reviewId } = req.params;
+    const { isApproved } = req.body;
+    
+    const review = await prisma.review.update({
+      where: { id: reviewId },
+      data: { isApproved: isApproved },
+      include: {
+        place: {
+          select: {
+            name: true
+          }
+        }
+      }
+    });
+    
+    console.log(`📝 Review ${isApproved ? 'approved' : 'rejected'} for ${review.place.name}`);
+    res.json({ message: `Review ${isApproved ? 'approved' : 'rejected'} successfully`, review });
+  } catch (error) {
+    console.error('Error updating review:', error);
+    res.status(500).json({ error: 'Failed to update review' });
+  }
+});
+
+// User profile endpoint (for Auth0 integration)
+app.get('/api/user/profile', async (req, res) => {
+  try {
+    // Check for Auth0 Bearer token
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.replace('Bearer ', '');
+    
+    console.log('🔍 Checking Auth0 authentication:', {
+      hasAuthHeader: !!authHeader,
+      hasToken: !!token,
+      tokenLength: token?.length || 0
+    });
+    
+    if (!token) {
+      return res.status(401).json({ error: 'No Auth0 token provided' });
+    }
+    
+    // In a real implementation, you would validate the Auth0 token here
+    // For now, we'll simulate Auth0 token validation
+    // You would typically:
+    // 1. Verify the token signature with Auth0's public key
+    // 2. Check token expiration
+    // 3. Extract user info from the token payload
+    
+    // Mock Auth0 user data - replace with actual Auth0 token validation
+    const mockUser = {
+      id: 1,
+      name: "Auth0 User",
+      nickname: "auth0user",
+      email: "user@ucf.edu", // This should come from Auth0 token
+      isUCFVerified: true // This should be determined by email domain
+    };
+    
+    console.log('✅ Auth0 authentication successful, returning user:', mockUser);
+    res.json(mockUser);
+  } catch (error) {
+    console.error('❌ Error validating Auth0 token:', error);
+    res.status(401).json({ error: 'Invalid Auth0 token' });
   }
 });
 
