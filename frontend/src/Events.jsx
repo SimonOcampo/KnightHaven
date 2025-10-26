@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
+import logoImg from './assets/KnightHavenLogo.png';
 
 const Events = ({ onBack }) => {
   const [events, setEvents] = useState([]);
@@ -79,7 +80,7 @@ const Events = ({ onBack }) => {
             <p className="tagline" style={{ color: "#ff6b6b" }}>Error: {error}</p>
             <button 
               onClick={fetchEvents}
-              className="nav-link"
+              className="btn-primary"
               style={{ marginTop: "1rem" }}
             >
               🔄 Try Again
@@ -114,18 +115,27 @@ const Events = ({ onBack }) => {
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <div style={{ 
             display: "flex", 
-            fontSize: "2rem",
             width: "60px",
             height: "60px",
             alignItems: "center",
             justifyContent: "center"
           }}>
-            🎉
+            <img
+              src={logoImg}
+              alt="KnightHaven logo"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                borderRadius: "8px",
+                filter: "drop-shadow(0 0 10px rgba(255, 204, 0, 0.5))"
+              }}
+            />
           </div>
           <div>
-            <h1 className="app-name" style={{ margin: "0", fontSize: "1.5rem" }}>
-              UCF Events
-            </h1>
+              <h1 className="app-name events-glow" style={{ margin: "0", fontSize: "1.5rem" }}>
+                UCF EVENTS
+              </h1>
             <p className="tagline" style={{ margin: "0.25rem 0 0 0", fontSize: "0.9rem" }}>
               Discover what's happening at UCF today
             </p>
@@ -134,10 +144,7 @@ const Events = ({ onBack }) => {
 
         {/* Right side - Controls */}
         <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-          <button onClick={fetchEvents} className="nav-link">
-            🔄 Refresh
-          </button>
-          <button onClick={onBack} className="nav-link">
+          <button onClick={onBack} className="btn-secondary">
             ← Back to Home
           </button>
         </div>
@@ -321,7 +328,7 @@ const Events = ({ onBack }) => {
                 <div style={{ marginTop: "1.5rem" }}>
                   <button 
                     onClick={() => window.open(selectedEvent.link, '_blank', 'noopener,noreferrer')}
-                    className="nav-link"
+                    className="btn-primary"
                     style={{ width: "100%" }}
                   >
                     🔗 View Event Details

@@ -43,6 +43,8 @@ model Listing {
   description String
   price       Float
   category    String
+  phoneNumber String?  // Optional phone number for UCF verified users
+  imageUrl    String?  // Optional image URL for listings
   authorId    Int
   author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   isActive    Boolean  @default(true)

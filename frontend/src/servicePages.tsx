@@ -327,8 +327,8 @@ function ServicesPage({ onBack }: ServicePagesProps) {
                
               </div>
               <div>
-                <h1 className="app-name" style={{ margin: "0", fontSize: "1.5rem" }}>
-                  UCF Area Nearby 
+                <h1 className="app-name services-glow" style={{ margin: "0", fontSize: "1.5rem" }}>
+                  UCF NEARBY
                 </h1>
                 <p className="tagline" style={{ margin: "0.25rem 0 0 0", fontSize: "0.9rem" }}>
                  
@@ -337,7 +337,7 @@ function ServicesPage({ onBack }: ServicePagesProps) {
             </div>
 
             {/* Right side - Back button */}
-            <button onClick={onBack} className="nav-link">
+            <button onClick={onBack} className="btn-secondary">
               ← Back to Home
             </button>
       </div>

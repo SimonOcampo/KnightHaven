@@ -11,16 +11,21 @@ export default function Marketplace({ onBack }) {
   const [price, setPrice] = useState("");
   const [category, setCategory] = useState("General");
   const [description, setDescription] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [photoFile, setPhotoFile] = useState(null);
 
-  // search state (Search panel on the left)
-  const [searchText, setSearchText] = useState("");
-  const [searchCategory, setSearchCategory] = useState("All");
+  // filter state (Filter panel on the left)
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // listings state
   const [listings, setListings] = useState([]);
   const [loadingListings, setLoadingListings] = useState(true);
   const [submittingListing, setSubmittingListing] = useState(false);
+  const [showPhoneNumbers, setShowPhoneNumbers] = useState({});
+  
+  // image modal state
+  const [selectedImage, setSelectedImage] = useState(null);
 
   // Fetch listings from database
   const fetchListings = async () => {
@@ -44,6 +49,94 @@ export default function Marketplace({ onBack }) {
   useEffect(() => {
     fetchListings();
   }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (isDropdownOpen && !event.target.closest('.custom-dropdown')) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDropdownOpen]);
+
+  // Filter listings based on selected category
+  const filteredListings = selectedCategory === "All" 
+    ? listings 
+    : listings.filter(listing => listing.category === selectedCategory);
+
+  // Delete listing function
+  const deleteListing = async (listingId) => {
+    if (!window.confirm('Are you sure you want to delete this listing?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://localhost:3001/api/listings/${listingId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userEmail: user.email
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Listing deleted:', result);
+        
+        // Refresh listings
+        await fetchListings();
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete listing: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Error deleting listing:', error);
+      alert('Failed to delete listing. Please try again.');
+    }
+  };
+
+  // Toggle phone number visibility
+  const togglePhoneNumber = (listingId) => {
+    setShowPhoneNumbers(prev => ({
+      ...prev,
+      [listingId]: !prev[listingId]
+    }));
+  };
+
+  // Image modal functions
+  const openImageModal = (imageUrl, title, description) => {
+    setSelectedImage({ url: imageUrl, title, description });
+  };
+
+  const closeImageModal = () => {
+    setSelectedImage(null);
+  };
+
+  // Custom dropdown functions
+  const toggleDropdown = () => {
+    setIsDropdownOpen(!isDropdownOpen);
+  };
+
+  const selectCategory = (category) => {
+    setSelectedCategory(category);
+    setIsDropdownOpen(false);
+  };
+
+  const categories = [
+    "All",
+    "General", 
+    "Textbooks / Study",
+    "Electronics",
+    "Clothing / Dorm",
+    "Services (tutoring, rides, etc.)"
+  ];
 
   // submit for marketplace post
   const handleSubmit = async (e) => {
@@ -69,20 +162,25 @@ export default function Marketplace({ onBack }) {
     setSubmittingListing(true);
 
     try {
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('title', title);
+      formData.append('description', description);
+      formData.append('price', parseFloat(price) || 0);
+      formData.append('category', category);
+      formData.append('phoneNumber', phoneNumber.trim() || '');
+      formData.append('authorEmail', user.email);
+      formData.append('authorName', getDisplayName(user));
+      
+      // Add image file if selected
+      if (photoFile) {
+        formData.append('image', photoFile);
+      }
+
       // Create listing in database
       const response = await fetch('http://localhost:3001/api/listings', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title,
-          description,
-          price: parseFloat(price) || 0,
-          category,
-          authorEmail: user.email,
-          authorName: getDisplayName(user)
-        })
+        body: formData
       });
 
       if (response.ok) {
@@ -144,7 +242,7 @@ export default function Marketplace({ onBack }) {
             <div className="marketplace-badge-row">
               <span className="cart-emoji">🛒</span>
               <span className="marketplace-badge">
-                KNIGHTHAVEN MARKETPLACE
+                <span className="marketplace-glow">KNIGHTHAVEN MARKETPLACE</span>
               </span>
             </div>
 
@@ -161,7 +259,7 @@ export default function Marketplace({ onBack }) {
 
           {/* RIGHT SIDE: Back button */}
           <button
-            className="back-btn"
+            className="btn-secondary"
             onClick={() => {
               if (onBack) {
                 onBack();
@@ -178,56 +276,50 @@ export default function Marketplace({ onBack }) {
 
       {/* MAIN BODY: 3 COLUMNS */}
       <section className="marketplace-body">
-        {/* ========== LEFT COLUMN: SEARCH / FILTER ========== */}
-        <aside className="search-card">
-          <div className="search-card-header">
-            <span className="search-icon">🔍</span>
-            <span className="search-heading-label">SEARCH</span>
+        {/* ========== LEFT COLUMN: CATEGORY FILTER ========== */}
+        <aside className="filter-card">
+          <div className="filter-card-header">
+            <span className="filter-icon">🔍</span>
+            <span className="filter-heading-label">FILTER</span>
           </div>
 
-          <h2 className="search-title">Looking for something?</h2>
-          <p className="search-desc">
-            Search the marketplace by item, service, category, etc.
+          <h2 className="filter-title">Filter by Category</h2>
+          <p className="filter-desc">
+            Browse listings by category to find what you're looking for.
           </p>
 
-          <form onSubmit={handleSearch} className="search-form">
-            {/* Search text */}
-            <label className="field-label">
-              What do you need?
-              <input
-                className="input-field"
-                type="text"
-                placeholder="Ex: calculator, ride, tutoring..."
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-              />
+          <div className="filter-dropdown">
+            <label className="filter-label">
+              Select Category
             </label>
-
-            {/* Search category */}
-            <label className="field-label">
-              Category
-              <select
-                className="input-field"
-                value={searchCategory}
-                onChange={(e) => setSearchCategory(e.target.value)}
+            <div className="custom-dropdown">
+              <button 
+                className="dropdown-trigger"
+                onClick={toggleDropdown}
               >
-                <option>All</option>
-                <option>Textbooks / Study</option>
-                <option>Electronics</option>
-                <option>Clothing / Dorm</option>
-                <option>Services</option>
-                <option>Rides / Carpool</option>
-              </select>
-            </label>
-
-            <button type="submit" className="search-btn">
-              Search
-            </button>
-
-            <p className="search-hint">
-              (Demo only — results feed coming soon)
-            </p>
-          </form>
+                <span className="dropdown-text">
+                  {selectedCategory === "All" ? "All Categories" : selectedCategory}
+                </span>
+                <span className={`dropdown-arrow ${isDropdownOpen ? "open" : ""}`}>
+                  ▼
+                </span>
+              </button>
+              
+              {isDropdownOpen && (
+                <div className="dropdown-menu">
+                  {categories.map((category) => (
+                    <button
+                      key={category}
+                      className={`dropdown-item ${selectedCategory === category ? "selected" : ""}`}
+                      onClick={() => selectCategory(category)}
+                    >
+                      {category === "All" ? "All Categories" : category}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </aside>
 
         {/* ========== MIDDLE COLUMN: LISTINGS FEED ========== */}
@@ -238,13 +330,13 @@ export default function Marketplace({ onBack }) {
             <div className="loading-listings">
               <p>Loading listings...</p>
             </div>
-          ) : listings.length === 0 ? (
+          ) : filteredListings.length === 0 ? (
             <div className="no-listings">
-              <p>No listings yet. Be the first to post something!</p>
+              <p>{selectedCategory === "All" ? "No listings yet. Be the first to post something!" : `No ${selectedCategory.toLowerCase()} listings found.`}</p>
             </div>
           ) : (
-            listings.map((listing) => (
-              <div key={listing.id} className="feed-card">
+            filteredListings.map((listing) => (
+              <div key={listing.id} className="feed-card" onClick={() => openImageModal(listing.imageUrl, listing.title, listing.description)}>
                 <div className="feed-card-top">
                   <div className="feed-title-row">
                     <span className="feed-title">{listing.title}</span>
@@ -266,9 +358,70 @@ export default function Marketplace({ onBack }) {
                   <div className="feed-desc">
                     {listing.description}
                   </div>
+                  
+                  {/* Image Section */}
+                  {listing.imageUrl && (
+                    <div className="feed-image-section">
+                      <img 
+                        src={`http://localhost:3001${listing.imageUrl}`} 
+                        alt={listing.title}
+                        className="listing-image"
+                        onClick={() => openImageModal(listing.imageUrl, listing.title, listing.description)}
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Phone Number Section - Only visible to verified UCF users */}
+                  {listing.phoneNumber && isVerifiedUCFUser(user) && (
+                    <div className="feed-phone-section">
+                      <button
+                        className="phone-toggle-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          togglePhoneNumber(listing.id);
+                        }}
+                      >
+                        {showPhoneNumbers[listing.id] ? '📞 Hide Phone' : '📞 Show Phone'}
+                      </button>
+                      {showPhoneNumbers[listing.id] && (
+                        <div className="phone-number-display">
+                          <strong>Phone:</strong> {listing.phoneNumber}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Show message for non-verified users when phone number exists */}
+                  {listing.phoneNumber && !isVerifiedUCFUser(user) && (
+                    <div className="feed-phone-section">
+                      <div className="phone-restricted-message">
+                        📞 Phone number available to verified UCF Knights only
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="feed-author">
                     <small>Posted by: {listing.author?.displayName || 'Unknown'}</small>
                   </div>
+                  
+                  {/* Action Buttons - Only show delete for user's own listings */}
+                  {isAuthenticated && user && user.email === listing.author?.email && (
+                    <div className="feed-actions">
+                    <button
+                      className="delete-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteListing(listing.id);
+                      }}
+                      title="Delete this listing"
+                    >
+                        🗑️ Delete
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))
@@ -294,7 +447,7 @@ export default function Marketplace({ onBack }) {
               <p className="listing-desc">
                 You need to be logged in to create marketplace listings.
               </p>
-              <button onClick={handleLogin} className="login-prompt-btn">
+              <button onClick={handleLogin} className="btn-primary">
                 Login to Create Listing
               </button>
             </div>
@@ -409,10 +562,25 @@ export default function Marketplace({ onBack }) {
             />
           </label>
 
+          {/* Phone Number - Only for UCF verified users */}
+          <label className="field-label">
+            Phone Number (Optional)
+            <input
+              className="input-field"
+              type="tel"
+              placeholder="Ex: (407) 555-0123"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+            />
+            <small className="field-help">
+              📞 Add your phone number so interested buyers can contact you directly
+            </small>
+          </label>
+
               {/* Submit */}
               <button 
                 type="submit" 
-                className="submit-listing-btn"
+                className="btn-primary"
                 disabled={submittingListing}
               >
                 {submittingListing ? 'Posting...' : 'Post Listing'}
@@ -421,6 +589,24 @@ export default function Marketplace({ onBack }) {
           )}
         </div>
       </section>
+      
+      {/* Image Modal */}
+      {selectedImage && (
+        <div className="image-modal-overlay" onClick={closeImageModal}>
+          <div className="image-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="image-modal-close" onClick={closeImageModal}>
+              ✕
+            </button>
+            <img 
+              src={`http://localhost:3001${selectedImage.url}`} 
+              alt={selectedImage.title}
+              className="image-modal-image"
+            />
+            <div className="image-modal-title">{selectedImage.title}</div>
+            <div className="image-modal-description">{selectedImage.description}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

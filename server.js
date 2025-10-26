@@ -2,10 +2,49 @@ import express from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import fetch from 'node-fetch';
+import multer from 'multer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3001;
+
+// Setup for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Configure multer for image uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  }
+});
 
 // Yelp API key
 const YELP_API_KEY = "HdrTZK8pCbDhmD5OTilm9wGBE3XwucLoQ3Qt7NOX__3fYYrG4CttZ9psfNc8m4kfNG32-V0jd1cnLG19fd0hoxqipBoAyFumq8_aeSW2tQGaUd_OolJhxkRa7lb8aHYx";
@@ -16,6 +55,7 @@ const GOOGLE_MAPS_API_KEY = "AIzaSyCnaJrYTNJF3bYR8ECfBxhcqgCD4JYVRl8";
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(uploadsDir));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -136,6 +176,7 @@ app.get('/api/listings', async (req, res) => {
           select: {
             id: true,
             displayName: true,
+            email: true,
             isUcfVerified: true
           }
         }
@@ -148,9 +189,15 @@ app.get('/api/listings', async (req, res) => {
   }
 });
 
-app.post('/api/listings', async (req, res) => {
+app.post('/api/listings', upload.single('image'), async (req, res) => {
   try {
-    const { title, description, price, category, authorId, authorEmail, authorName } = req.body;
+    const { title, description, price, category, authorId, authorEmail, authorName, phoneNumber } = req.body;
+    
+    // Handle image upload
+    let imageUrl = null;
+    if (req.file) {
+      imageUrl = `/uploads/${req.file.filename}`;
+    }
     
     // Find or create a user for this listing
     let userId;
@@ -183,6 +230,8 @@ app.post('/api/listings', async (req, res) => {
         description,
         price: parseFloat(price),
         category,
+        phoneNumber: phoneNumber || null,
+        imageUrl: imageUrl,
         authorId: userId
       },
       include: {
@@ -190,6 +239,7 @@ app.post('/api/listings', async (req, res) => {
           select: {
             id: true,
             displayName: true,
+            email: true,
             isUcfVerified: true
           }
         }
@@ -203,6 +253,55 @@ app.post('/api/listings', async (req, res) => {
       error: 'Failed to create listing', 
       details: error.message,
       stack: error.stack 
+    });
+  }
+});
+
+// Delete listing endpoint
+app.delete('/api/listings/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userEmail } = req.body;
+    const listingId = parseInt(id);
+    
+    // Check if user email is provided
+    if (!userEmail) {
+      return res.status(400).json({ error: 'User email is required to delete listing' });
+    }
+    
+    // Check if listing exists
+    const listing = await prisma.listing.findUnique({
+      where: { id: listingId },
+      include: { author: true }
+    });
+    
+    if (!listing) {
+      return res.status(404).json({ error: 'Listing not found' });
+    }
+    
+    // Check if user owns the listing
+    if (listing.author.email !== userEmail) {
+      return res.status(403).json({ error: 'You can only delete your own listings' });
+    }
+    
+    // Delete the listing
+    await prisma.listing.delete({
+      where: { id: listingId }
+    });
+    
+    res.json({ 
+      success: true, 
+      message: 'Listing deleted successfully',
+      deletedListing: {
+        id: listing.id,
+        title: listing.title
+      }
+    });
+  } catch (error) {
+    console.error('Error deleting listing:', error);
+    res.status(500).json({ 
+      error: 'Failed to delete listing', 
+      details: error.message 
     });
   }
 });
